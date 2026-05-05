@@ -67,6 +67,25 @@ def simulate(p: Params) -> dict:
 
     upfront = down_payment + transaction_cost  # renter invests this at t=0
 
+    # Outstanding mortgage balance at the end of each year using the standard
+    # amortization formula: B(n) = P(1+r)^n − PMT·((1+r)^n − 1)/r
+    r_m = p.mortgage_rate / 12  # monthly rate
+    mortgage_balance = np.zeros(H + 1)
+    mortgage_balance[0] = mortgage_principal
+    for t in range(1, H + 1):
+        if t <= mortgage_years:
+            n = t * 12
+            if r_m > 0:
+                bal = (mortgage_principal * (1 + r_m) ** n
+                       - p.monthly_payment * ((1 + r_m) ** n - 1) / r_m)
+            else:
+                bal = mortgage_principal - p.monthly_payment * n
+            mortgage_balance[t] = max(0.0, bal)
+        # else remains 0 (mortgage paid off)
+
+    # Owner equity = what the owner would pocket if they sold: market value minus debt
+    owner_equity = home_value - mortgage_balance
+
     renter_portfolio = np.zeros(H + 1)
     owner_portfolio = np.zeros(H + 1)
     renter_portfolio[0] = upfront
@@ -82,12 +101,14 @@ def simulate(p: Params) -> dict:
     return {
         "years": years,
         "home_value": home_value,
+        "mortgage_balance": mortgage_balance,
+        "owner_equity": owner_equity,
         "owner_cost": owner_cost,
         "renter_cost": renter_cost,
         "diff": diff,
         "renter_portfolio": renter_portfolio,
         "owner_portfolio": owner_portfolio,
-        "owner_net_worth": home_value + owner_portfolio,
+        "owner_net_worth": owner_equity + owner_portfolio,
         "renter_net_worth": renter_portfolio,
         "mortgage_years": mortgage_years,
         "upfront": upfront,
