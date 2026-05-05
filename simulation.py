@@ -1,0 +1,156 @@
+"""
+Core financial simulation for rent vs buy analysis.
+No UI dependencies — importable standalone.
+
+Model: equal total annual cash outflow between owner and renter.
+Whoever pays less in a given year invests the difference at index_return.
+"""
+
+import numpy as np
+from dataclasses import dataclass, replace
+from typing import Optional
+
+
+@dataclass
+class Params:
+    home_price: float = 150_000
+    down_payment_pct: float = 0.20
+    transaction_cost_pct: float = 0.05       # one-time, paid by owner at year 0
+    mortgage_rate: float = 0.03              # annual nominal
+    monthly_payment: float = 650             # fixed; also = initial annual rent / 12
+    annual_ownership_cost_pct: float = 0.02  # maintenance + property tax, % of home value
+    home_appreciation: float = 0.02          # annual nominal
+    rent_inflation: float = 0.02             # annual rent growth
+    index_return: float = 0.05               # annual, before tax
+    horizon_years: int = 50
+    capital_gains_tax_rate: float = 0.0      # applied annually as a drag on returns
+    cpi: float = 0.02                        # for real-value deflation only
+
+
+def mortgage_term_years(principal: float, monthly_payment: float, annual_rate: float) -> float:
+    r = annual_rate / 12
+    if monthly_payment <= principal * r:
+        raise ValueError("Monthly payment is too small to cover interest on this loan.")
+    n_months = -np.log(1 - principal * r / monthly_payment) / np.log(1 + r)
+    return n_months / 12
+
+
+def simulate(p: Params) -> dict:
+    down_payment = p.home_price * p.down_payment_pct
+    mortgage_principal = p.home_price - down_payment
+    transaction_cost = p.home_price * p.transaction_cost_pct
+    annual_mortgage = p.monthly_payment * 12
+    annual_rent_year1 = p.monthly_payment * 12
+
+    mortgage_years = int(round(mortgage_term_years(mortgage_principal, p.monthly_payment, p.mortgage_rate)))
+    H = p.horizon_years
+
+    # Capital gains tax is modelled as an annual drag on the gross return
+    effective_return = p.index_return * (1.0 - p.capital_gains_tax_rate)
+
+    years = np.arange(0, H + 1)
+    home_value = p.home_price * (1 + p.home_appreciation) ** years
+
+    owner_cost = np.zeros(H + 1)
+    renter_cost = np.zeros(H + 1)
+    for t in range(1, H + 1):
+        ownership_cost_t = p.annual_ownership_cost_pct * home_value[t - 1]
+        if t <= mortgage_years:
+            owner_cost[t] = annual_mortgage + ownership_cost_t
+        else:
+            owner_cost[t] = ownership_cost_t
+        renter_cost[t] = annual_rent_year1 * (1 + p.rent_inflation) ** (t - 1)
+
+    # diff > 0  → owner spends more, renter invests the surplus
+    # diff < 0  → renter spends more, owner invests the surplus
+    diff = owner_cost - renter_cost
+
+    upfront = down_payment + transaction_cost  # renter invests this at t=0
+
+    renter_portfolio = np.zeros(H + 1)
+    owner_portfolio = np.zeros(H + 1)
+    renter_portfolio[0] = upfront
+
+    for t in range(1, H + 1):
+        renter_portfolio[t] = renter_portfolio[t - 1] * (1 + effective_return)
+        owner_portfolio[t] = owner_portfolio[t - 1] * (1 + effective_return)
+        if diff[t] > 0:
+            renter_portfolio[t] += diff[t]
+        else:
+            owner_portfolio[t] += -diff[t]
+
+    return {
+        "years": years,
+        "home_value": home_value,
+        "owner_cost": owner_cost,
+        "renter_cost": renter_cost,
+        "diff": diff,
+        "renter_portfolio": renter_portfolio,
+        "owner_portfolio": owner_portfolio,
+        "owner_net_worth": home_value + owner_portfolio,
+        "renter_net_worth": renter_portfolio,
+        "mortgage_years": mortgage_years,
+        "upfront": upfront,
+    }
+
+
+def sweep(base_params: Params, param_name: str, values) -> list:
+    """Run simulate() for each value of one parameter; returns None for invalid combos."""
+    results = []
+    for v in values:
+        try:
+            p = replace(base_params, **{param_name: v})
+            results.append(simulate(p))
+        except ValueError:
+            results.append(None)
+    return results
+
+
+def find_breakeven(
+    base_params: Params,
+    param_name: str,
+    lo: float,
+    hi: float,
+    horizon_year: Optional[int] = None,
+    tol: float = 1e-5,
+) -> Optional[float]:
+    """
+    Binary-search for the value of param_name at which owner and renter net worths
+    are equal at horizon_year. Returns None if no crossover exists in [lo, hi].
+    """
+    h = horizon_year if horizon_year is not None else base_params.horizon_years
+    h = min(h, base_params.horizon_years)
+
+    def gap(v: float) -> float:
+        p = replace(base_params, **{param_name: v})
+        sim = simulate(p)
+        return sim["owner_net_worth"][h] - sim["renter_net_worth"][h]
+
+    try:
+        g_lo, g_hi = gap(lo), gap(hi)
+    except ValueError:
+        return None
+
+    if g_lo * g_hi > 0:
+        return None  # same sign → no crossover
+
+    for _ in range(60):
+        mid = (lo + hi) / 2
+        try:
+            g_mid = gap(mid)
+        except ValueError:
+            return None
+        if abs(hi - lo) < tol:
+            return mid
+        if g_lo * g_mid <= 0:
+            hi = mid
+        else:
+            lo = mid
+            g_lo = g_mid
+
+    return (lo + hi) / 2
+
+
+def to_real(arr: np.ndarray, cpi: float, years: np.ndarray) -> np.ndarray:
+    """Deflate a nominal array by (1+cpi)^t."""
+    return arr / (1 + cpi) ** years

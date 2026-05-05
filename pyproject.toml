@@ -1,0 +1,10 @@
+[project]
+name = "mortgage-rent"
+version = "0.1.0"
+description = "Add your description here"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.4.4",
+    "plotly>=6.7.0",
+    "streamlit>=1.57.0",
+]
