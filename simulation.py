@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 from typing import Optional
 
 
-@dataclass
+@dataclass(init=False)
 class Params:
     home_price: float = 150_000
     down_payment_pct: float = 0.20
@@ -26,6 +26,42 @@ class Params:
     horizon_years: int = 50
     capital_gains_tax_rate: float = 0.0      # applied annually as a drag on returns
     cpi: float = 0.02                        # for real-value deflation only
+
+    def __init__(
+        self,
+        home_price: float = 150_000,
+        down_payment_pct: float = 0.20,
+        transaction_cost_pct: float = 0.05,
+        mortgage_rate: float = 0.03,
+        monthly_mortgage_payment: float | None = None,
+        initial_monthly_rent: float | None = None,
+        monthly_payment: float | None = None,
+        annual_ownership_cost_pct: float = 0.02,
+        home_appreciation: float = 0.02,
+        rent_inflation: float = 0.02,
+        index_return: float = 0.05,
+        horizon_years: int = 50,
+        capital_gains_tax_rate: float = 0.0,
+        cpi: float = 0.02,
+    ):
+        legacy_payment = 650 if monthly_payment is None else monthly_payment
+        self.home_price = home_price
+        self.down_payment_pct = down_payment_pct
+        self.transaction_cost_pct = transaction_cost_pct
+        self.mortgage_rate = mortgage_rate
+        self.monthly_mortgage_payment = (
+            legacy_payment if monthly_mortgage_payment is None else monthly_mortgage_payment
+        )
+        self.initial_monthly_rent = (
+            legacy_payment if initial_monthly_rent is None else initial_monthly_rent
+        )
+        self.annual_ownership_cost_pct = annual_ownership_cost_pct
+        self.home_appreciation = home_appreciation
+        self.rent_inflation = rent_inflation
+        self.index_return = index_return
+        self.horizon_years = horizon_years
+        self.capital_gains_tax_rate = capital_gains_tax_rate
+        self.cpi = cpi
 
 
 def mortgage_term_years(principal: float, monthly_payment: float, annual_rate: float) -> float:
