@@ -17,7 +17,8 @@ class Params:
     down_payment_pct: float = 0.20
     transaction_cost_pct: float = 0.05       # one-time, paid by owner at year 0
     mortgage_rate: float = 0.03              # annual nominal
-    monthly_payment: float = 650             # fixed; also = initial annual rent / 12
+    monthly_mortgage_payment: float = 650    # fixed monthly mortgage instalment
+    initial_monthly_rent: float = 650        # year-1 monthly rent before inflation
     annual_ownership_cost_pct: float = 0.02  # maintenance + property tax, % of home value
     home_appreciation: float = 0.02          # annual nominal
     rent_inflation: float = 0.02             # annual rent growth
@@ -29,6 +30,8 @@ class Params:
 
 def mortgage_term_years(principal: float, monthly_payment: float, annual_rate: float) -> float:
     r = annual_rate / 12
+    if r == 0:
+        return principal / monthly_payment / 12
     if monthly_payment <= principal * r:
         raise ValueError("Monthly payment is too small to cover interest on this loan.")
     n_months = -np.log(1 - principal * r / monthly_payment) / np.log(1 + r)
@@ -39,10 +42,15 @@ def simulate(p: Params) -> dict:
     down_payment = p.home_price * p.down_payment_pct
     mortgage_principal = p.home_price - down_payment
     transaction_cost = p.home_price * p.transaction_cost_pct
-    annual_mortgage = p.monthly_payment * 12
-    annual_rent_year1 = p.monthly_payment * 12
+    annual_mortgage = p.monthly_mortgage_payment * 12
+    annual_rent_year1 = p.initial_monthly_rent * 12
+    renter_agency_cost = p.initial_monthly_rent * 2
 
-    mortgage_years = int(round(mortgage_term_years(mortgage_principal, p.monthly_payment, p.mortgage_rate)))
+    mortgage_years = int(round(mortgage_term_years(
+        mortgage_principal,
+        p.monthly_mortgage_payment,
+        p.mortgage_rate,
+    )))
     H = p.horizon_years
 
     # Capital gains tax is modelled as an annual drag on the gross return
@@ -53,6 +61,8 @@ def simulate(p: Params) -> dict:
 
     owner_cost = np.zeros(H + 1)
     renter_cost = np.zeros(H + 1)
+    owner_cost[0] = down_payment + transaction_cost
+    renter_cost[0] = renter_agency_cost
     for t in range(1, H + 1):
         ownership_cost_t = p.annual_ownership_cost_pct * home_value[t - 1]
         if t <= mortgage_years:
@@ -65,7 +75,7 @@ def simulate(p: Params) -> dict:
     # diff < 0  → renter spends more, owner invests the surplus
     diff = owner_cost - renter_cost
 
-    upfront = down_payment + transaction_cost  # renter invests this at t=0
+    upfront = owner_cost[0]
 
     # Outstanding mortgage balance at the end of each year using the standard
     # amortization formula: B(n) = P(1+r)^n − PMT·((1+r)^n − 1)/r
@@ -77,9 +87,9 @@ def simulate(p: Params) -> dict:
             n = t * 12
             if r_m > 0:
                 bal = (mortgage_principal * (1 + r_m) ** n
-                       - p.monthly_payment * ((1 + r_m) ** n - 1) / r_m)
+                       - p.monthly_mortgage_payment * ((1 + r_m) ** n - 1) / r_m)
             else:
-                bal = mortgage_principal - p.monthly_payment * n
+                bal = mortgage_principal - p.monthly_mortgage_payment * n
             mortgage_balance[t] = max(0.0, bal)
         # else remains 0 (mortgage paid off)
 
@@ -88,7 +98,8 @@ def simulate(p: Params) -> dict:
 
     renter_portfolio = np.zeros(H + 1)
     owner_portfolio = np.zeros(H + 1)
-    renter_portfolio[0] = upfront
+    renter_portfolio[0] = max(0.0, diff[0])
+    owner_portfolio[0] = max(0.0, -diff[0])
 
     for t in range(1, H + 1):
         renter_portfolio[t] = renter_portfolio[t - 1] * (1 + effective_return)
@@ -112,6 +123,7 @@ def simulate(p: Params) -> dict:
         "renter_net_worth": renter_portfolio,
         "mortgage_years": mortgage_years,
         "upfront": upfront,
+        "renter_agency_cost": renter_agency_cost,
     }
 
 

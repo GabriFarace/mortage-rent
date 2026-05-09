@@ -61,10 +61,10 @@ NW(0) = down_payment
 
 **Phase 2 — During the mortgage (1 ≤ t ≤ payoff year)**
 
-The owner pays the fixed mortgage instalment plus annual maintenance/tax on the current home value. During most of this phase the owner spends more than the renter, so the renter is the one investing.
+The owner pays the fixed mortgage instalment plus annual maintenance/tax on the current home value. Depending on the rent and mortgage inputs, either side may be the one investing the annual difference.
 
 ```
-cashflow(t) = 12 × monthly_payment
+cashflow(t) = 12 × monthly_mortgage_payment
             + ownership_cost_pct × home_value(t−1)
 ```
 
@@ -76,7 +76,7 @@ NW(t) = owner_equity(t) + owner_portfolio(t)
 owner_equity(t)       = home_value(t) − mortgage_balance(t)
 home_value(t)         = home_price × (1 + appreciation)^t
 mortgage_balance(t)   = principal × (1+r_m)^(12t)
-                        − monthly_payment × [(1+r_m)^(12t) − 1] / r_m
+                        − monthly_mortgage_payment × [(1+r_m)^(12t) − 1] / r_m
 r_m                   = mortgage_rate / 12   (monthly rate)
 ```
 
@@ -100,25 +100,27 @@ NW(t) = home_value(t) + owner_portfolio(t)
 
 ### 🧳 Renter
 
-**Phase 1 — Year 0 (upfront investment)**
+**Phase 1 — Year 0 (agency cost + upfront investment)**
 
-The renter puts into an index fund the exact same cash the owner spent upfront. Because transaction costs are also invested (instead of being sunk), the renter's initial net worth is slightly *larger* than the owner's initial equity.
+The renter pays an initial agency cost equal to two monthly rent payments. To preserve equal year-0 cash outflow, the renter invests the difference between the owner's upfront cash outflow and this agency cost.
 
 ```
-cashflow(0) = down_payment + transaction_cost   (same cash out as the owner)
+renter_cost(0) = 2 × initial_monthly_rent
+renter_invested(0) = max(0, owner_cost(0) − renter_cost(0))
+owner_invested(0) = max(0, renter_cost(0) − owner_cost(0))
 
 NW(0) = portfolio(0)
-      = down_payment + transaction_cost
+      = renter_invested(0)
 ```
 
 ---
 
 **Phase 2 — During the mortgage (1 ≤ t ≤ owner's payoff year)**
 
-The renter pays rent, which starts equal to the owner's mortgage payment and then grows with rent inflation. When rent is below the owner's total cost the renter invests the difference; when rent overtakes the owner's cost (late in this phase) the portfolio just compounds.
+The renter pays rent, which starts from its own configurable value and then grows with rent inflation. When rent is below the owner's total cost the renter invests the difference; when rent is above the owner's cost, the owner invests the difference.
 
 ```
-cashflow(t) = 12 × monthly_payment × (1 + rent_inflation)^(t−1)
+cashflow(t) = 12 × initial_monthly_rent × (1 + rent_inflation)^(t−1)
 
 NW(t) = portfolio(t)
       = portfolio(t−1) × (1 + r_eff)
@@ -131,16 +133,17 @@ r_eff = index_return × (1 − capital_gains_tax_rate)
 
 **Phase 3 — After the mortgage (t > owner's payoff year)**
 
-Rent keeps growing while the owner's cost has collapsed. The renter now spends more than the owner each year, so no new contributions flow into the portfolio — it compounds on its own.
+Rent keeps growing while the owner's cost has usually fallen to maintenance/tax only. If rent is above the owner's cost, the owner invests the surplus; otherwise the renter continues investing the difference.
 
 ```
-cashflow(t) = 12 × monthly_payment × (1 + rent_inflation)^(t−1)   (same formula)
+cashflow(t) = 12 × initial_monthly_rent × (1 + rent_inflation)^(t−1)   (same formula)
 
 NW(t) = portfolio(t)
       = portfolio(t−1) × (1 + r_eff)
+        + max(0, owner_cashflow(t) − renter_cashflow(t))
 ```
 
-*(no new additions — owner invests the surplus instead)*
+*(when rent is higher, the owner's portfolio receives the surplus instead)*
 
 ---
 
@@ -152,6 +155,23 @@ NW(t) = portfolio(t)
 | **Annual cash outflows** | `cashflow(t)` for each party; lines cross when rent overtakes owner cost |
 | **Investment contributions** | `max(0, diff(t))` for each party each year |
 | **Owner decomposition** | Stacked: equity (blue, = home_value − debt, grows as mortgage is repaid + appreciation) + financial investments (green) vs renter portfolio (red) |
+""",
+        "model_assumptions_header": "📌 Model assumptions",
+        "model_assumptions_body": """\
+The model intentionally compares the same person living in the same functional home under two choices: buying it or renting it. Any extra assumption added to one side should also apply to the other.
+
+1. **Same person, same housing need.** The owner lives in the home they buy. They do not rent it out after the mortgage is finished unless the renter is also assumed to own another home, which would break the comparison.
+2. **Equal cash outflow is the core rule.** Every year, owner and renter are forced to have the same total cash outflow. Whoever has the lower housing cost invests the difference.
+3. **Maintenance costs are constant as a percentage.** Owner maintenance/tax costs are applied every year over the full period. This can penalize the owner because real maintenance may be lower early on and higher later.
+4. **Rent grows with inflation every year.** This can penalize the renter, especially in markets such as Italy where some contracts can keep rent fixed for several years.
+5. **The two simplifications partly offset.** Constant maintenance weighs against the owner; annually increasing rent weighs against the renter. They may cancel only partially.
+6. **Stock market returns are constant.** This is a strong simplification. A bad sequence of returns during the mortgage period could hurt the renter materially, but future returns cannot be predicted.
+7. **Initial rent and fixed mortgage payment are separate inputs.** They can be equal, but the model no longer forces them to be equal.
+8. **The mortgage has a fixed interest rate.** This is typical enough for the comparison and keeps the amortization deterministic.
+9. **Renter agency costs are included at the start.** They are modelled as two monthly rent payments in year 0. Other moving or contract-renewal costs are omitted by assuming the renter stays in the same home.
+10. **Owner maintenance is proportional to current home value.** This reflects the idea that labor and materials rise with the same broad forces that lift property values.
+11. **Maintenance prevents depreciation; it is not renovation.** It keeps the owner home functionally comparable to the rented home. Renovation-driven appreciation is excluded.
+12. **No psychological utility is modelled.** Stability, pride of ownership, fear of eviction, flexibility, and other non-monetary preferences are intentionally outside the model.
 """,
         # Sidebar
         "sidebar_header": "Parameters",
@@ -173,11 +193,12 @@ NW(t) = portfolio(t)
         ),
         "mortgage_rate": "Mortgage rate",
         "help_mortgage_rate": "Annual nominal interest rate on the mortgage loan.",
-        "monthly_payment": "Monthly payment (= initial rent)",
-        "help_monthly_payment": (
-            "Fixed monthly mortgage instalment. "
-            "This also sets the starting monthly rent for the renter — "
-            "so both start with identical outgoings at year 1."
+        "monthly_mortgage_payment": "Monthly mortgage payment",
+        "help_monthly_mortgage_payment": "Fixed monthly mortgage instalment paid by the owner.",
+        "initial_monthly_rent": "Initial monthly rent",
+        "help_initial_monthly_rent": (
+            "Monthly rent in year 1. It grows afterwards with rent inflation and is no longer tied "
+            "to the mortgage payment."
         ),
         "home_appreciation": "Home appreciation / year",
         "help_home_appreciation": (
@@ -271,6 +292,8 @@ NW(t) = portfolio(t)
             "down_payment_pct": "Down payment",
             "transaction_cost_pct": "Transaction cost",
             "mortgage_rate": "Mortgage rate",
+            "monthly_mortgage_payment": "Mortgage payment",
+            "initial_monthly_rent": "Initial rent",
             "annual_ownership_cost_pct": "Ownership cost",
             "home_appreciation": "Home appreciation",
             "rent_inflation": "Rent inflation",
@@ -320,10 +343,10 @@ NW(0) = anticipo
 
 **Fase 2 — Durante il mutuo (1 ≤ t ≤ fine mutuo)**
 
-Il proprietario paga la rata fissa del mutuo più i costi annui di manutenzione/tasse sul valore corrente dell'immobile. In questa fase il proprietario spende di più dell'affittuario, quindi è l'affittuario a investire.
+Il proprietario paga la rata fissa del mutuo più i costi annui di manutenzione/tasse sul valore corrente dell'immobile. In base agli input di affitto e mutuo, una delle due parti investirà la differenza annua.
 
 ```
-cashflow(t) = 12 × rata_mensile
+cashflow(t) = 12 × rata_mutuo_mensile
             + costo_proprietà% × valore_immobile(t−1)
 ```
 
@@ -335,7 +358,7 @@ NW(t) = equity_proprietario(t) + portafoglio_proprietario(t)
 equity_proprietario(t) = valore_immobile(t) − saldo_mutuo(t)
 valore_immobile(t)     = prezzo × (1 + rivalutazione)^t
 saldo_mutuo(t)         = capitale × (1+r_m)^(12t)
-                         − rata_mensile × [(1+r_m)^(12t) − 1] / r_m
+                         − rata_mutuo_mensile × [(1+r_m)^(12t) − 1] / r_m
 r_m                    = tasso_mutuo / 12   (tasso mensile)
 ```
 
@@ -359,25 +382,27 @@ NW(t) = valore_immobile(t) + portafoglio_proprietario(t)
 
 ### 🧳 Affittuario
 
-**Fase 1 — Anno 0 (investimento iniziale)**
+**Fase 1 — Anno 0 (costo agenzia + investimento iniziale)**
 
-L'affittuario investe in un fondo indice la stessa somma cash spesa dal proprietario. Poiché anche i costi di acquisto vengono investiti (anziché bruciati), il patrimonio iniziale dell'affittuario è leggermente *superiore* all'equity iniziale del proprietario.
+L'affittuario paga un costo iniziale di agenzia pari a due mensilità di affitto. Per mantenere la stessa uscita di cassa all'anno 0, investe la differenza tra l'esborso iniziale del proprietario e questo costo di agenzia.
 
 ```
-cashflow(0) = anticipo + costi_acquisto   (stessa uscita cash del proprietario)
+costo_affittuario(0) = 2 × affitto_mensile_iniziale
+investito_affittuario(0) = max(0, costo_proprietario(0) − costo_affittuario(0))
+investito_proprietario(0) = max(0, costo_affittuario(0) − costo_proprietario(0))
 
 NW(0) = portafoglio(0)
-      = anticipo + costi_acquisto
+      = investito_affittuario(0)
 ```
 
 ---
 
 **Fase 2 — Durante il mutuo (1 ≤ t ≤ fine mutuo del proprietario)**
 
-L'affittuario paga l'affitto, che parte uguale alla rata del mutuo e poi cresce con l'inflazione. Quando l'affitto è inferiore al costo del proprietario, l'affittuario investe la differenza; quando lo supera (fine di questa fase), il portafoglio si rivaluta soltanto.
+L'affittuario paga l'affitto, che parte da un valore configurabile separato e poi cresce con l'inflazione. Quando l'affitto è inferiore al costo del proprietario, l'affittuario investe la differenza; quando è superiore, il proprietario investe la differenza.
 
 ```
-cashflow(t) = 12 × rata_mensile × (1 + inflazione_affitto)^(t−1)
+cashflow(t) = 12 × affitto_mensile_iniziale × (1 + inflazione_affitto)^(t−1)
 
 NW(t) = portafoglio(t)
       = portafoglio(t−1) × (1 + r_netto)
@@ -390,16 +415,17 @@ r_netto = rendimento_fondo × (1 − aliquota_plusvalenze)
 
 **Fase 3 — Dopo il mutuo (t > fine mutuo del proprietario)**
 
-L'affitto continua a crescere mentre il costo del proprietario è crollato. L'affittuario spende ora di più — nessun nuovo versamento nel portafoglio, che si rivaluta da solo.
+L'affitto continua a crescere mentre il costo del proprietario di solito scende ai soli costi di manutenzione/tasse. Se l'affitto supera il costo del proprietario, il proprietario investe il surplus; altrimenti l'affittuario continua a investire la differenza.
 
 ```
-cashflow(t) = 12 × rata_mensile × (1 + inflazione_affitto)^(t−1)   (stessa formula)
+cashflow(t) = 12 × affitto_mensile_iniziale × (1 + inflazione_affitto)^(t−1)   (stessa formula)
 
 NW(t) = portafoglio(t)
       = portafoglio(t−1) × (1 + r_netto)
+        + max(0, cashflow_proprietario(t) − cashflow_affittuario(t))
 ```
 
-*(nessun nuovo versamento — è il proprietario a investire il surplus)*
+*(quando l'affitto è più alto, il surplus va invece nel portafoglio del proprietario)*
 
 ---
 
@@ -411,6 +437,23 @@ NW(t) = portafoglio(t)
 | **Uscite annuali** | `cashflow(t)` per entrambi; le linee si incrociano quando l'affitto supera il costo del proprietario |
 | **Contributi all'investimento** | `max(0, diff(t))` per ciascuna parte ogni anno |
 | **Composizione patrimonio** | Stratificato: equity (blu, = valore − debito, cresce con rimborso mutuo + rivalutazione) + investimenti (verde) vs portafoglio affittuario (rosso) |
+""",
+        "model_assumptions_header": "📌 Ipotesi del modello",
+        "model_assumptions_body": """\
+Il modello confronta intenzionalmente la stessa persona che vive nella stessa casa funzionale sotto due scelte: acquistare o affittare. Qualsiasi ipotesi extra aggiunta a una parte dovrebbe valere anche per l'altra.
+
+1. **Stessa persona, stessa esigenza abitativa.** Il proprietario vive nella casa che compra. Non la mette a reddito dopo la fine del mutuo, a meno di assumere che anche l'affittuario possieda un'altra casa, cosa che romperebbe il confronto.
+2. **La stessa uscita di cassa è la regola centrale.** Ogni anno proprietario e affittuario hanno la stessa uscita totale. Chi sostiene il costo abitativo più basso investe la differenza.
+3. **I costi di manutenzione sono costanti in percentuale.** I costi annui del proprietario sono applicati per tutto il periodo. Questo può penalizzare il proprietario, perché nella realtà la manutenzione può essere più bassa all'inizio e più alta alla fine.
+4. **L'affitto cresce ogni anno con l'inflazione.** Questo può penalizzare l'affittuario, soprattutto in mercati come l'Italia dove alcuni contratti possono mantenere il canone fisso per diversi anni.
+5. **Le due semplificazioni si compensano in parte.** La manutenzione costante pesa sul proprietario; l'affitto che cresce ogni anno pesa sull'affittuario. La compensazione può essere solo parziale.
+6. **Il rendimento azionario è costante.** È una forte semplificazione. Una sequenza negativa di rendimenti durante il mutuo potrebbe danneggiare molto l'affittuario, ma i rendimenti futuri non sono prevedibili.
+7. **Affitto iniziale e rata fissa del mutuo sono input separati.** Possono essere uguali, ma il modello non li forza più a coincidere.
+8. **Il mutuo è a tasso fisso.** È un'ipotesi tipica e mantiene deterministica l'ammortizzazione.
+9. **I costi di agenzia dell'affittuario sono inclusi all'inizio.** Sono modellati come due mensilità all'anno 0. Altri costi di trasloco o rinnovo sono omessi assumendo che l'affittuario resti nella stessa casa.
+10. **La manutenzione del proprietario è proporzionale al valore corrente della casa.** Questo riflette l'idea che manodopera e materiali crescano con forze simili a quelle che rivalutano gli immobili.
+11. **La manutenzione evita il deprezzamento; non è ristrutturazione.** Mantiene la casa del proprietario funzionalmente comparabile alla casa in affitto. La rivalutazione da ristrutturazione è esclusa.
+12. **Nessuna utilità psicologica è modellata.** Stabilità, orgoglio di possesso, paura dello sfratto, flessibilità e altre preferenze non monetarie restano fuori dal modello.
 """,
         "sidebar_header": "Parametri",
         "expander_property": "Immobile & Mutuo",
@@ -430,11 +473,12 @@ NW(t) = portafoglio(t)
         ),
         "mortgage_rate": "Tasso del mutuo",
         "help_mortgage_rate": "Tasso d'interesse annuo nominale del mutuo.",
-        "monthly_payment": "Rata mensile (= affitto iniziale)",
-        "help_monthly_payment": (
-            "Rata mensile fissa del mutuo. "
-            "Coincide anche con l'affitto mensile iniziale dell'inquilino — "
-            "entrambi partono con le stesse uscite al primo anno."
+        "monthly_mortgage_payment": "Rata mensile mutuo",
+        "help_monthly_mortgage_payment": "Rata mensile fissa del mutuo pagata dal proprietario.",
+        "initial_monthly_rent": "Affitto mensile iniziale",
+        "help_initial_monthly_rent": (
+            "Affitto mensile del primo anno. Poi cresce con l'inflazione dell'affitto e non è più "
+            "legato alla rata del mutuo."
         ),
         "home_appreciation": "Rivalutazione immobile / anno",
         "help_home_appreciation": (
@@ -522,6 +566,8 @@ NW(t) = portafoglio(t)
             "down_payment_pct": "Anticipo",
             "transaction_cost_pct": "Costi acquisto",
             "mortgage_rate": "Tasso mutuo",
+            "monthly_mortgage_payment": "Rata mutuo",
+            "initial_monthly_rent": "Affitto iniziale",
             "annual_ownership_cost_pct": "Costo proprietà",
             "home_appreciation": "Rivalutazione immobile",
             "rent_inflation": "Inflazione affitto",
@@ -547,6 +593,9 @@ st.caption(s["app_subtitle"])
 with st.expander(s["assumptions_header"], expanded=False):
     st.markdown(s["assumptions_body"])
 
+with st.expander(s["model_assumptions_header"], expanded=False):
+    st.markdown(s["model_assumptions_body"])
+
 # ── Sidebar parameters ────────────────────────────────────────────────────────
 with st.sidebar:
     st.header(s["sidebar_header"])
@@ -568,9 +617,13 @@ with st.sidebar:
             s["mortgage_rate"], 0.5, 12.0, 3.0, step=0.25, format="%.2f%%",
             help=s["help_mortgage_rate"],
         )
-        monthly_payment = st.slider(
-            s["monthly_payment"], 200, 5_000, 650, step=50, format="€%d",
-            help=s["help_monthly_payment"],
+        monthly_mortgage_payment = st.slider(
+            s["monthly_mortgage_payment"], 200, 5_000, 650, step=50, format="€%d",
+            help=s["help_monthly_mortgage_payment"],
+        )
+        initial_monthly_rent = st.slider(
+            s["initial_monthly_rent"], 200, 5_000, 650, step=50, format="€%d",
+            help=s["help_initial_monthly_rent"],
         )
 
     with st.expander(s["expander_market"], expanded=True):
@@ -613,7 +666,8 @@ params = Params(
     down_payment_pct=down_pct_ui / 100,
     transaction_cost_pct=tx_cost_ui / 100,
     mortgage_rate=mortgage_rate_ui / 100,
-    monthly_payment=float(monthly_payment),
+    monthly_mortgage_payment=float(monthly_mortgage_payment),
+    initial_monthly_rent=float(initial_monthly_rent),
     annual_ownership_cost_pct=own_cost_ui / 100,
     home_appreciation=home_appr_ui / 100,
     rent_inflation=rent_infl_ui / 100,
@@ -680,14 +734,14 @@ with tab_analysis:
     with c1:
         st.plotly_chart(
             fig_net_worth(sim, real=show_real, cpi=params.cpi, lang=lang),
-            use_container_width=True,
+            width="stretch",
         )
-        st.plotly_chart(fig_contributions(sim, lang=lang), use_container_width=True)
+        st.plotly_chart(fig_contributions(sim, lang=lang), width="stretch")
     with c2:
-        st.plotly_chart(fig_cash_flows(sim, lang=lang), use_container_width=True)
+        st.plotly_chart(fig_cash_flows(sim, lang=lang), width="stretch")
         st.plotly_chart(
             fig_decomposition(sim, real=show_real, cpi=params.cpi, lang=lang),
-            use_container_width=True,
+            width="stretch",
         )
 
     st.subheader(s["milestones_title"])
@@ -717,15 +771,20 @@ with tab_sensitivity:
     st.caption(s["sweep_caption"])
 
     # Dynamically cap mortgage_rate and home_price sweep to avoid invalid combos.
-    # Constraint: monthly_payment > (home_price*(1-dp)) * rate/12
+    # Constraint: monthly_mortgage_payment > (home_price*(1-dp)) * rate/12
     mortgage_principal = params.home_price * (1 - params.down_payment_pct)
-    max_valid_rate = (params.monthly_payment / mortgage_principal * 12) * 0.97
-    max_valid_price = (params.monthly_payment / (params.mortgage_rate / 12)) / (1 - params.down_payment_pct) * 0.97
+    min_valid_mortgage_payment = (mortgage_principal * (params.mortgage_rate / 12)) * 1.03
+    max_valid_rate = (params.monthly_mortgage_payment / mortgage_principal * 12) * 0.97
+    max_valid_price = (
+        params.monthly_mortgage_payment / (params.mortgage_rate / 12)
+    ) / (1 - params.down_payment_pct) * 0.97
 
     SWEEP_PARAMS = {
         "home_appreciation": (0.0, 0.08),
         "index_return": (0.01, 0.12),
         "rent_inflation": (0.0, 0.08),
+        "initial_monthly_rent": (200, 3_000),
+        "monthly_mortgage_payment": (max(200, min_valid_mortgage_payment), 3_000),
         "mortgage_rate": (0.005, min(0.10, max_valid_rate)),
         "home_price": (50_000, min(600_000, max_valid_price)),
         "down_payment_pct": (0.05, 0.40),
@@ -745,7 +804,7 @@ with tab_sensitivity:
     plabel = param_label_map.get(sweep_param, PARAM_LABELS.get(sweep_param, sweep_param))
     st.plotly_chart(
         fig_sweep(sweep_sims, sweep_param, sweep_values, param_label=plabel, lang=lang),
-        use_container_width=True,
+        width="stretch",
     )
 
     st.divider()
@@ -757,6 +816,8 @@ with tab_sensitivity:
         ("home_appreciation", 0.0, 0.12),
         ("index_return", 0.0, 0.20),
         ("rent_inflation", 0.0, 0.10),
+        ("initial_monthly_rent", 200, 4_000),
+        ("monthly_mortgage_payment", max(200, min_valid_mortgage_payment), 4_000),
         ("mortgage_rate", 0.005, min(0.12, max_valid_rate)),
         ("home_price", 50_000, min(700_000, max_valid_price)),
     ]
@@ -803,7 +864,7 @@ with tab_sensitivity:
     df_be = pd.DataFrame(be_rows)
     st.dataframe(
         df_be,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             s["be_col_param"]: st.column_config.TextColumn(width="medium"),
@@ -831,7 +892,7 @@ with tab_scenarios:
             placeholder=s["scenario_placeholder"],
         )
     with col_save:
-        if st.button(s["btn_save"], disabled=n_saved >= 4, use_container_width=True):
+        if st.button(s["btn_save"], disabled=n_saved >= 4, width="stretch"):
             st.session_state.scenarios.append({
                 "name": scenario_name or f"Scenario {n_saved + 1}",
                 "sim": sim,
@@ -839,7 +900,7 @@ with tab_scenarios:
             })
             st.rerun()
     with col_clear:
-        if st.button(s["btn_clear"], disabled=n_saved == 0, use_container_width=True):
+        if st.button(s["btn_clear"], disabled=n_saved == 0, width="stretch"):
             st.session_state.scenarios = []
             st.rerun()
 
@@ -849,7 +910,7 @@ with tab_scenarios:
     if st.session_state.scenarios:
         st.plotly_chart(
             fig_scenarios(st.session_state.scenarios, lang=lang),
-            use_container_width=True,
+            width="stretch",
         )
 
         st.subheader(s["comp_title"].format(h=horizon_years))
@@ -877,6 +938,8 @@ with tab_scenarios:
                 st.markdown(
                     f"**{sc['name']}**: "
                     f"€{p.home_price:,.0f} | "
+                    f"Mutuo €{p.monthly_mortgage_payment:,.0f}/mo | "
+                    f"Affitto €{p.initial_monthly_rent:,.0f}/mo | "
                     f"{p.mortgage_rate:.2%} | "
                     f"↑{p.home_appreciation:.2%} | "
                     f"📈{p.index_return:.2%} | "

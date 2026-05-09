@@ -43,9 +43,10 @@ diff < 0  →  owner   invests the surplus
 
 ## Model assumptions
 
-- **Year 0** — Owner pays down payment + transaction costs. Renter invests the same cash.
-- **During mortgage** — Owner pays instalment + maintenance/tax. Rent starts equal and grows with rent inflation.
+- **Year 0** — Owner pays down payment + transaction costs. Renter pays agency costs equal to two monthly rent payments and invests the remaining upfront surplus.
+- **During mortgage** — Owner pays instalment + maintenance/tax. Rent starts from its own configurable value and grows with rent inflation.
 - **After mortgage** — Owner's cost collapses to maintenance/tax only; owner invests the surplus. Renter portfolio compounds without new contributions.
+- **Year 0 renter cost** — Renter agency cost is modelled as two monthly rent payments before investing the remaining upfront surplus.
 
 See the **"How the model works"** panel inside the app for the full formulas.
 
